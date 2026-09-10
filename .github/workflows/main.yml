@@ -1,0 +1,33 @@
+name: Build IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Find project and build (unsigned)
+        run: |
+          DIR=$(dirname "$(find . -name project.yml -not -path '*/.*' | head -1)")
+          echo "PROJDIR=$DIR" >> "$GITHUB_ENV"
+          cd "$DIR"
+          xcodegen generate
+          xcodebuild -project Jarvis.xcodeproj -scheme Jarvis \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" \
+            ARCHS=arm64 build
+
+      - name: Package IPA
+        run: |
+          cd "$PROJDIR"
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Jarvis.app Payload/
+          zip -qr Jarvis.ipa
