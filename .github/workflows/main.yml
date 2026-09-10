@@ -27,13 +27,8 @@ jobs:
             SET="$DIR/Sources/Assets.xcassets/AppIcon.appiconset"
             mkdir -p "$SET"
             cp "$DIR/icon.png" "$SET/icon.png"
-            cat > "$SET/Contents.json" <<'JSON'
-          {"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],
-           "info":{"author":"xcode","version":1}}
-          JSON
-            cat > "$DIR/Sources/Assets.xcassets/Contents.json" <<'JSON'
-          {"info":{"author":"xcode","version":1}}
-          JSON
+            printf '%s' '{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}' > "$SET/Contents.json"
+            printf '%s' '{"info":{"author":"xcode","version":1}}' > "$DIR/Sources/Assets.xcassets/Contents.json"
           fi
 
       - name: Build (unsigned)
@@ -41,12 +36,22 @@ jobs:
           cd "$PROJDIR"
           VERSION="1.0.${{ github.run_number }}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sed -i '' "s/MARKETING_VERSION: \"[^\"]*\"/MARKETING_VERSION: \"$VERSION\"/" project.yml
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"[^\"]*\"/CURRENT_PROJECT_VERSION: \"${{ github.run_number }}\"/" project.yml
           xcodegen generate
           xcodebuild -project Jarvis.xcodeproj -scheme Jarvis \
             -configuration Release -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" \
             MARKETING_VERSION="$VERSION" ARCHS=arm64 build
+
+      - name: Verify version stamp
+        run: |
+          cd "$PROJDIR"
+          PLIST="build/Build/Products/Release-iphoneos/Jarvis.app/Info.plist"
+          GOT=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST")
+          echo "built version: $GOT (expected $VERSION)"
+          [ "$GOT" = "$VERSION" ]
 
       - name: Package IPA + source.json
         run: |
@@ -57,8 +62,10 @@ jobs:
           SIZE=$(stat -f%z Jarvis.ipa)
           DATE=$(date -u +%Y-%m-%d)
           REPO="${{ github.repository }}"
-          cat > source.json <<JSON
-          {
+          python3 - <<PYEOF
+          import json, os
+          repo = os.environ["GITHUB_REPOSITORY"]
+          src = {
             "name": "Jarvis",
             "identifier": "com.boris.jarvis.source",
             "apps": [{
@@ -67,18 +74,20 @@ jobs:
               "developerName": "Boris",
               "subtitle": "Local AI, in your pocket",
               "localizedDescription": "Talks to the Jarvis home server: Ollama personas, Piper voices, ComfyUI images.",
-              "iconURL": "https://raw.githubusercontent.com/$REPO/main/icon.png",
+              "iconURL": f"https://raw.githubusercontent.com/{repo}/main/icon.png",
               "tintColor": "#ffb02e",
               "versions": [{
                 "version": "$VERSION",
                 "date": "$DATE",
                 "size": $SIZE,
                 "minOSVersion": "16.0",
-                "downloadURL": "https://github.com/$REPO/releases/download/latest/Jarvis.ipa"
+                "downloadURL": f"https://github.com/{repo}/releases/download/latest/Jarvis.ipa"
               }]
             }]
           }
-          JSON
+          json.dump(src, open("source.json", "w"), indent=2)
+          print(open("source.json").read())
+          PYEOF
 
       - name: Publish release
         env:
