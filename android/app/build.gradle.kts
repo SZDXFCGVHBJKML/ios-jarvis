@@ -10,12 +10,12 @@ val ciKeystore = System.getenv("CI_KEYSTORE")
 
 android {
     namespace = "com.boris.jarvis"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.boris.jarvis"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = verCode
         versionName = verName
     }
