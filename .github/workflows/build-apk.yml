@@ -31,13 +31,24 @@ jobs:
             -dname "CN=Jarvis"
 
       - name: Build APK
+        shell: bash
         env:
           JARVIS_VERSION: "1.0.${{ github.run_number }}"
           JARVIS_VERCODE: "${{ github.run_number }}"
         run: |
           export CI_KEYSTORE="$RUNNER_TEMP/ci.jks"
-          gradle -p android assembleRelease
+          gradle -p android assembleRelease --stacktrace 2>&1 | tee build.log
           cp android/app/build/outputs/apk/release/app-release.apk Jarvis.apk
+
+      - name: Publish failure log
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tail -c 60000 build.log > build-log.txt 2>/dev/null || echo "no log captured" > build-log.txt
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest -t "Jarvis (auto-built)" -n "Rolling latest build"
+          gh release upload latest build-log.txt --clobber
 
       - name: Publish to release
         env:
